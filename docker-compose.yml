@@ -1,0 +1,19 @@
+version: "3.7"
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: grpc_server
+    ports:
+      - "50051:50051"
+
+  envoy:
+    # **Envoy の `grpc_web` フィルターを含むバージョンに変更**
+    image: envoyproxy/envoy:v1.26-latest
+    container_name: envoy
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml
+    ports:
+      - "8080:8080"

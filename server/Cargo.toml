@@ -1,0 +1,17 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tonic = "0.9"
+prost = "0.11"
+tokio = { version = "1", features = ["full"] }
+tonic-reflection = "0.9.2"                     # tonicのバージョンに合わせて0.9系を使用
+
+[build-dependencies]
+tonic-build = "0.9"
+
+[[bin]]
+name = "server"
+path = "src/server.rs"
