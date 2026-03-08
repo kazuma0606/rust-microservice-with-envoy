@@ -1,0 +1,25 @@
+# Rust
+target/
+*.rs.bk
+*.rlib
+
+# Environment secrets
+.env
+docker/.env
+!docker/.env.example
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# sqlx offline data
+.sqlx/

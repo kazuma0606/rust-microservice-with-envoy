@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package authpulse.v1.aggregator;
+
+service AggregatorService {
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+  rpc ListAlerts(ListAlertsRequest) returns (ListAlertsResponse);
+  rpc ResolveAlert(ResolveAlertRequest) returns (ResolveAlertResponse);
+  rpc UpsertWebhookConfig(UpsertWebhookConfigRequest) returns (UpsertWebhookConfigResponse);
+}
+
+message GetMetricsRequest {
+  string tenant_id = 1;
+  int64 period_start_unix_ms = 2;
+  int64 period_end_unix_ms = 3;
+}
+
+message GetMetricsResponse {
+  string tenant_id = 1;
+  int64 period_start_unix_ms = 2;
+  int64 period_end_unix_ms = 3;
+  uint64 allow_count = 4;
+  uint64 deny_count = 5;
+  double allow_rate = 6;
+  uint64 latency_p50_ms = 7;
+  uint64 latency_p95_ms = 8;
+  uint64 latency_p99_ms = 9;
+  bool latency_no_data = 10;
+  uint64 rate_limit_count = 11;
+  int64 computed_at_unix_ms = 12;
+}
+
+message ListAlertsRequest {
+  string tenant_id = 1;
+  bool include_resolved = 2;
+  int32 page_size = 4;
+}
+
+message ListAlertsResponse {
+  repeated AlertProto alerts = 1;
+  int32 total_count = 3;
+}
+
+message AlertProto {
+  string id = 1;
+  string tenant_id = 2;
+  string rule_name = 3;
+  int32 severity = 4;
+  int64 detected_at_unix_ms = 5;
+  string related_user_id = 6;
+  string related_service = 7;
+  string detail = 8;
+  bool is_resolved = 9;
+  int64 resolved_at_unix_ms = 10;
+}
+
+message ResolveAlertRequest {
+  string tenant_id = 1;
+  string alert_id = 2;
+}
+
+message ResolveAlertResponse {
+  AlertProto alert = 1;
+}
+
+message UpsertWebhookConfigRequest {
+  string tenant_id = 1;
+  string url = 2;
+  bool is_active = 3;
+}
+
+message UpsertWebhookConfigResponse {
+  string id = 1;
+  string tenant_id = 2;
+  string url = 3;
+  bool is_active = 4;
+}
