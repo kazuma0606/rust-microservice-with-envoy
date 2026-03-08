@@ -1,0 +1,199 @@
+syntax = "proto3";
+
+package authpulse.v1.aggregator;
+
+import "google/protobuf/timestamp.proto";
+
+// AggregatorService — 集計・異常検知・アラート管理・Webhook設定を担うサービス
+// デプロイ: services/aggregator
+service AggregatorService {
+  // テナント・期間を指定してメトリクス集計を取得する
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+
+  // 未解決アラートの一覧を取得する
+  rpc ListAlerts(ListAlertsRequest) returns (ListAlertsResponse);
+
+  // アラートを解決済みとしてマークする
+  rpc ResolveAlert(ResolveAlertRequest) returns (ResolveAlertResponse);
+
+  // Webhook 通知先 URL を登録・更新する
+  rpc UpsertWebhookConfig(UpsertWebhookConfigRequest) returns (UpsertWebhookConfigResponse);
+}
+
+// ---------------------------------------------------------------------------
+// GetMetrics
+// ---------------------------------------------------------------------------
+
+message GetMetricsRequest {
+  // テナント識別子（必須）
+  string tenant_id = 1;
+
+  // 集計期間の開始時刻（必須, UTC）
+  google.protobuf.Timestamp period_start = 2;
+
+  // 集計期間の終了時刻（必須, UTC）
+  google.protobuf.Timestamp period_end = 3;
+}
+
+message GetMetricsResponse {
+  // テナント識別子
+  string tenant_id = 1;
+
+  // 集計期間の開始時刻
+  google.protobuf.Timestamp period_start = 2;
+
+  // 集計期間の終了時刻
+  google.protobuf.Timestamp period_end = 3;
+
+  // ALLOW イベント数
+  uint64 allow_count = 4;
+
+  // DENY イベント数
+  uint64 deny_count = 5;
+
+  // 認可成功率（0.0〜1.0, データなし時は 0.0）
+  double allow_rate = 6;
+
+  // レイテンシ集計（latency_ms が記録されているイベントのみ対象）
+  LatencyPercentiles latency = 7;
+
+  // レート制限到達（429）件数
+  uint64 rate_limit_count = 8;
+
+  // 計算実行時刻（UTC）
+  google.protobuf.Timestamp computed_at = 9;
+}
+
+// LatencyPercentiles — レイテンシ分位点（ms）
+message LatencyPercentiles {
+  // データがない場合は 0 を返す
+  uint64 p50_ms = 1;
+  uint64 p95_ms = 2;
+  uint64 p99_ms = 3;
+  // レイテンシデータが1件もない場合は true
+  bool no_data = 4;
+}
+
+// ---------------------------------------------------------------------------
+// ListAlerts
+// ---------------------------------------------------------------------------
+
+message ListAlertsRequest {
+  // テナント識別子（必須）
+  string tenant_id = 1;
+
+  // true の場合: 解決済みを含む全アラートを返す（デフォルト: false）
+  bool include_resolved = 2;
+
+  // ページングトークン（オプション, MVP では未実装）
+  string page_token = 3;
+
+  // 最大返却件数（0 の場合はデフォルト上限 100 件）
+  int32 page_size = 4;
+}
+
+message ListAlertsResponse {
+  // アラートの一覧
+  repeated AlertProto alerts = 1;
+
+  // 次ページトークン（MVP では空文字列）
+  string next_page_token = 2;
+
+  // 合計件数
+  int32 total_count = 3;
+}
+
+// AlertProto — アラートの表現
+message AlertProto {
+  // アラート UUID
+  string id = 1;
+
+  // テナント識別子
+  string tenant_id = 2;
+
+  // 発火したルール名（例: "DenyThresholdExceeded"）
+  string rule_name = 3;
+
+  // 重要度
+  AlertSeverity severity = 4;
+
+  // 検知時刻（UTC）
+  google.protobuf.Timestamp detected_at = 5;
+
+  // 関連ユーザー ID（オプション）
+  string related_user_id = 6;
+
+  // 関連サービス名（オプション）
+  string related_service = 7;
+
+  // 詳細メッセージ
+  string detail = 8;
+
+  // 解決済みフラグ
+  bool is_resolved = 9;
+
+  // 解決時刻（オプション）
+  google.protobuf.Timestamp resolved_at = 10;
+}
+
+// AlertSeverity — アラート重要度
+enum AlertSeverity {
+  ALERT_SEVERITY_UNSPECIFIED = 0;
+  ALERT_SEVERITY_HIGH = 1;
+  ALERT_SEVERITY_MEDIUM = 2;
+  ALERT_SEVERITY_LOW = 3;
+}
+
+// ---------------------------------------------------------------------------
+// ResolveAlert
+// ---------------------------------------------------------------------------
+
+message ResolveAlertRequest {
+  // テナント識別子（必須）
+  string tenant_id = 1;
+
+  // 解決するアラートの UUID（必須）
+  string alert_id = 2;
+}
+
+message ResolveAlertResponse {
+  // 更新後のアラート
+  AlertProto alert = 1;
+}
+
+// ---------------------------------------------------------------------------
+// UpsertWebhookConfig
+// ---------------------------------------------------------------------------
+
+message UpsertWebhookConfigRequest {
+  // テナント識別子（必須）
+  string tenant_id = 1;
+
+  // 通知先 URL（必須, https:// のみ）
+  string url = 2;
+
+  // 有効フラグ（false で無効化）
+  bool is_active = 3;
+}
+
+message UpsertWebhookConfigResponse {
+  // 設定 UUID
+  string id = 1;
+
+  // テナント識別子
+  string tenant_id = 2;
+
+  // 登録/更新後の URL
+  string url = 3;
+
+  // 有効フラグ
+  bool is_active = 4;
+}
+
+// ---------------------------------------------------------------------------
+// エラーコード補足
+// ---------------------------------------------------------------------------
+// INVALID_ARGUMENT: 必須フィールド欠損, バリデーション失敗（URL スキーム等）
+// NOT_FOUND: 指定した alert_id が該当テナントに存在しない
+// PERMISSION_DENIED: tenant_id ミスマッチ（他テナントデータへのアクセス試行）
+// INTERNAL: DB 障害等の内部エラー
