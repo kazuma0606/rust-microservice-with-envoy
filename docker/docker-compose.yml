@@ -1,0 +1,82 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: authpulse_postgres
+    environment:
+      POSTGRES_DB: authpulse
+      POSTGRES_USER: authpulse
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-authpulse_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  collector:
+    build:
+      context: ..
+      dockerfile: services/collector/Dockerfile
+    container_name: authpulse_collector
+    environment:
+      DATABASE_URL: postgres://authpulse:${POSTGRES_PASSWORD:-authpulse_dev}@postgres:5432/authpulse
+      COLLECTOR_ADDR: 0.0.0.0:50051
+      METRICS_ADDR: 0.0.0.0:9091
+      RUST_LOG: info
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    ports:
+      - "50051:50051"
+      - "9091:9091"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  aggregator:
+    build:
+      context: ..
+      dockerfile: services/aggregator/Dockerfile
+    container_name: authpulse_aggregator
+    environment:
+      DATABASE_URL: postgres://authpulse:${POSTGRES_PASSWORD:-authpulse_dev}@postgres:5432/authpulse
+      AGGREGATOR_ADDR: 0.0.0.0:50052
+      METRICS_ADDR: 0.0.0.0:9092
+      DENY_THRESHOLD: "10"
+      CONSECUTIVE_FAILURE_THRESHOLD: "5"
+      DETECTION_INTERVAL_SECS: "300"
+      RUST_LOG: info
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    ports:
+      - "50052:50052"
+      - "9092:9092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  envoy:
+    image: envoyproxy/envoy:v1.29-latest
+    container_name: authpulse_envoy
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.yaml
+    ports:
+      - "8080:8080"
+    depends_on:
+      - collector
+      - aggregator
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: authpulse_prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+
+volumes:
+  postgres_data:

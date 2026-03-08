@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package authpulse.v1.collector;
+
+import "google/protobuf/timestamp.proto";
+
+// CollectorService — 認証認可イベントの受信を担うサービス
+// デプロイ: services/collector
+// Envoy が前段で JWT 検証・レート制限を実施する（本サービス側では検証しない）
+service CollectorService {
+  // 認証認可イベントを受信して永続化する
+  rpc IngestEvent(IngestEventRequest) returns (IngestEventResponse);
+}
+
+// IngestEventRequest — クライアントが送信するイベント
+message IngestEventRequest {
+  // テナント識別子（必須, ≤64文字）
+  string tenant_id = 1;
+
+  // 認証対象ユーザーの識別子（必須, ≤128文字）
+  string user_id = 2;
+
+  // 認可を実施したサービス名（必須, ≤128文字）
+  string service = 3;
+
+  // アクセス対象リソースのパスまたは名称（必須, ≤256文字）
+  string resource = 4;
+
+  // 実行しようとした操作（必須, ≤64文字, 例: "read", "write", "delete"）
+  string action = 5;
+
+  // 認可結果（必須）
+  Decision decision = 6;
+
+  // 拒否理由コード（オプション, ≤64文字, 例: "PERMISSION_DENIED"）
+  string reason_code = 7;
+
+  // 認可処理レイテンシ（オプション, ミリ秒）
+  uint64 latency_ms = 8;
+
+  // リクエスト元 IP アドレス（オプション, IPv4/IPv6, ≤45文字）
+  string source_ip = 9;
+
+  // 分散トレース ID（オプション, ≤64文字）
+  string trace_id = 10;
+
+  // イベント発生時刻（必須, UTC）
+  google.protobuf.Timestamp timestamp = 11;
+}
+
+// IngestEventResponse — イベント受信結果
+message IngestEventResponse {
+  // 保存されたイベントの UUID
+  string event_id = 1;
+
+  // 受信時刻（サーバー側タイムスタンプ, UTC）
+  google.protobuf.Timestamp recorded_at = 2;
+}
+
+// Decision — 認可結果
+enum Decision {
+  DECISION_UNSPECIFIED = 0;
+  DECISION_ALLOW = 1;
+  DECISION_DENY = 2;
+}
+
+// エラーコード（gRPC Status に加えてレスポンスに含める場合）
+// INVALID_ARGUMENT: 必須フィールド欠損, バリデーション失敗
+// RESOURCE_EXHAUSTED: レート制限到達（Envoy が返す; 本サービスは使用しない）
+// INTERNAL: 内部エラー（DB障害等）
